@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Qiskit](https://img.shields.io/badge/Qiskit-1.0+-6133BD.svg)](https://qiskit.org/)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/02_algorithm_implementation.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/00_colab_quickstart.ipynb)
 
 **A novel hybrid quantum-classical algorithm for molecular ground state estimation with rigorous mathematical proofs and adaptive tensor network optimization.**
 
@@ -42,7 +42,15 @@ QATNE combines adaptive tensor network methods with variational quantum algorith
 
 ### Google Colab (Recommended)
 
-Click the badge above to open the main notebook in Google Colab. Everything runs in the browser with zero installation!
+Click the badge above to open the Colab quickstart notebook. It installs QATNE and runs a small smoke test directly in the browser.
+
+Additional Colab notebooks:
+- `notebooks/01_mathematical_framework.ipynb`
+- `notebooks/02_algorithm_implementation.ipynb`
+- `notebooks/03_convergence_proofs.ipynb`
+- `notebooks/04_molecular_benchmarks.ipynb`
+- `notebooks/05_hardware_experiments.ipynb`
+- `notebooks/06_visualization_gallery.ipynb`
 
 ### Local Installation
 
@@ -125,11 +133,13 @@ qatne/
 │   ├── utils/                  # Visualization and metrics
 │   └── benchmarks/             # Molecular systems and baselines
 ├── notebooks/                  # Jupyter notebooks
+│   ├── 00_colab_quickstart.ipynb
 │   ├── 01_mathematical_framework.ipynb
 │   ├── 02_algorithm_implementation.ipynb
 │   ├── 03_convergence_proofs.ipynb
 │   ├── 04_molecular_benchmarks.ipynb
-│   └── 05_hardware_experiments.ipynb
+│   ├── 05_hardware_experiments.ipynb
+│   └── 06_visualization_gallery.ipynb
 ├── docs/                       # Documentation
 │   ├── theory/                 # Mathematical proofs and theory
 │   ├── tutorials/              # How-to guides

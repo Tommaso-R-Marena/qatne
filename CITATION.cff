@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use QATNE in your research, please cite it as below."
+title: "QATNE: Quantum Adaptive Tensor Network Eigensolver"
+version: 1.0.0
+date-released: 2026-02-15
+url: "https://github.com/Tommaso-R-Marena/qatne"
+repository-code: "https://github.com/Tommaso-R-Marena/qatne"
+license: MIT
+authors:
+  - family-names: "Marena"
+    given-names: "Tommaso R."
+    email: "marena@cua.edu"
+    affiliation: "The Catholic University of America"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+keywords:
+  - quantum computing
+  - tensor networks
+  - quantum chemistry
+  - variational quantum eigensolver
+  - molecular simulation
+  - hybrid quantum-classical algorithms
+abstract: |
+  QATNE (Quantum Adaptive Tensor Network Eigensolver) is a novel hybrid 
+  quantum-classical algorithm for molecular ground state estimation. It 
+  combines adaptive tensor network representations with variational quantum 
+  circuits to achieve quantum advantage for molecular simulations. The 
+  algorithm features provable convergence guarantees, O(n^4) complexity, 
+  and automatic adaptation of circuit structure based on entanglement 
+  requirements.

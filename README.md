@@ -42,15 +42,15 @@ QATNE combines adaptive tensor network methods with variational quantum algorith
 
 ### Google Colab (Recommended)
 
-Click the badge above to open the Colab quickstart notebook. It installs QATNE and runs a small smoke test directly in the browser.
+Click any badge below to open the corresponding notebook directly in Colab.
 
-Additional Colab notebooks:
-- `notebooks/01_mathematical_framework.ipynb`
-- `notebooks/02_algorithm_implementation.ipynb`
-- `notebooks/03_convergence_proofs.ipynb`
-- `notebooks/04_molecular_benchmarks.ipynb`
-- `notebooks/05_hardware_experiments.ipynb`
-- `notebooks/06_visualization_gallery.ipynb`
+- [![Open In Colab - Quickstart](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/00_colab_quickstart.ipynb)
+- [![Open In Colab - Mathematical Framework](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/01_mathematical_framework.ipynb)
+- [![Open In Colab - Algorithm Implementation](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/02_algorithm_implementation.ipynb)
+- [![Open In Colab - Convergence Proofs](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/03_convergence_proofs.ipynb)
+- [![Open In Colab - Molecular Benchmarks](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/04_molecular_benchmarks.ipynb)
+- [![Open In Colab - Hardware Experiments](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/05_hardware_experiments.ipynb)
+- [![Open In Colab - Visualization Gallery](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Tommaso-R-Marena/qatne/blob/main/notebooks/06_visualization_gallery.ipynb)
 
 ### Local Installation
 

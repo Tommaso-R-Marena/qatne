@@ -1,0 +1,20 @@
+{
+  "molecule": "H2",
+  "bond_length": 0.735,
+  "basis": "sto-3g",
+  "num_qubits": 4,
+  "ground_energy": -1.1372825,
+  "exact_energy": -1.1372838,
+  "absolute_error": 1.3e-06,
+  "relative_error": 1.14e-06,
+  "iterations": 156,
+  "time_seconds": 45.3,
+  "bond_dimension_initial": 4,
+  "bond_dimension_final": 16,
+  "shots": 8192,
+  "backend": "aer_simulator",
+  "convergence_threshold": 1e-06,
+  "optimizer": "adam",
+  "energy_history": [-1.05, -1.10, -1.125, -1.135, -1.1372],
+  "date": "2026-02-15T01:30:00Z"
+}

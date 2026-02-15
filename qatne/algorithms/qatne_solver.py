@@ -1,1 +1,184 @@
-"""\nQuantum Adaptive Tensor Network Eigensolver\n\nMain algorithm implementation with adaptive optimization.\n"""\n\nimport numpy as np\nfrom typing import Tuple, List, Optional\nfrom qiskit import QuantumCircuit, QuantumRegister\nfrom qiskit.circuit import Parameter\nfrom qiskit_aer import AerSimulator\nfrom scipy.optimize import minimize\n\n\nclass QATNESolver:\n    \"\"\"\n    Quantum Adaptive Tensor Network Eigensolver\n    \n    A hybrid quantum-classical algorithm for molecular ground state\n    energy estimation using adaptive tensor network representations.\n    \n    Attributes:\n        hamiltonian: Molecular Hamiltonian in qubit form\n        num_qubits: Number of qubits required\n        max_bond_dim: Maximum tensor network bond dimension\n        convergence_threshold: Energy convergence criterion\n    \"\"\"\n    \n    def __init__(\n        self,\n        hamiltonian: np.ndarray,\n        num_qubits: int,\n        max_bond_dim: int = 32,\n        convergence_threshold: float = 1e-6,\n        shots: int = 8192\n    ):\n        self.hamiltonian = hamiltonian\n        self.num_qubits = num_qubits\n        self.max_bond_dim = max_bond_dim\n        self.convergence_threshold = convergence_threshold\n        self.shots = shots\n        \n        # Initialize tensor network structure\n        self.tensor_network = self._initialize_tensor_network()\n        \n        # Quantum backend\n        self.backend = AerSimulator()\n        \n        # Optimization history\n        self.energy_history = []\n        self.parameter_history = []\n        self.gradient_norms = []\n        \n    def _initialize_tensor_network(self) -> 'TensorNetwork':\n        \"\"\"Initialize adaptive tensor network structure\"\"\"\n        from qatne.core.tensor_network import TensorNetwork\n        return TensorNetwork(\n            num_sites=self.num_qubits,\n            bond_dim=4,  # Start small\n            max_bond_dim=self.max_bond_dim\n        )\n    \n    def _build_adaptive_ansatz(self, params: np.ndarray) -> QuantumCircuit:\n        \"\"\"\n        Build quantum circuit from adaptive tensor network structure\n        \n        The circuit architecture is dynamically determined by the\n        tensor network bond dimensions and entanglement structure.\n        \"\"\"\n        qr = QuantumRegister(self.num_qubits, 'q')\n        circuit = QuantumCircuit(qr)\n        \n        param_idx = 0\n        \n        # Layer 1: Single-qubit rotations\n        for i in range(self.num_qubits):\n            if param_idx < len(params):\n                circuit.ry(params[param_idx], qr[i])\n                param_idx += 1\n            if param_idx < len(params):\n                circuit.rz(params[param_idx], qr[i])\n                param_idx += 1\n        \n        # Layer 2-N: Entangling layers based on tensor network structure\n        for layer in range(self.tensor_network.num_layers):\n            # Get entanglement pairs from tensor network\n            pairs = self.tensor_network.get_entanglement_pairs(layer)\n            \n            for i, j in pairs:\n                # Two-qubit gate\n                circuit.cx(qr[i], qr[j])\n                if param_idx < len(params):\n                    circuit.ry(params[param_idx], qr[j])\n                    param_idx += 1\n                circuit.cx(qr[i], qr[j])\n            \n            # Single-qubit rotations\n            for i in range(self.num_qubits):\n                if param_idx < len(params) - 1:\n                    circuit.ry(params[param_idx], qr[i])\n                    param_idx += 1\n                    circuit.rz(params[param_idx], qr[i])\n                    param_idx += 1\n        \n        return circuit\n    \n    def _compute_energy(self, params: np.ndarray) -> float:\n        \"\"\"\n        Compute expectation value of Hamiltonian\n        \n        Uses parameter shift rule for gradient estimation\n        \"\"\"\n        circuit = self._build_adaptive_ansatz(params)\n        \n        # Measure in computational basis\n        circuit.measure_all()\n        \n        # Execute circuit\n        job = self.backend.run(circuit, shots=self.shots)\n        result = job.result()\n        counts = result.get_counts()\n        \n        # Compute energy expectation\n        energy = 0.0\n        for bitstring, count in counts.items():\n            prob = count / self.shots\n            # Convert bitstring to computational basis state\n            state_vector = self._bitstring_to_state(bitstring)\n            # Compute <state|H|state>\n            energy += prob * np.real(\n                state_vector.conj().T @ self.hamiltonian @ state_vector\n            )\n        \n        return energy\n    \n    def _compute_gradient(self, params: np.ndarray) -> np.ndarray:\n        \"\"\"\n        Compute gradient using parameter shift rule\n        \n        ∂E/∂θᵢ = [E(θ + π/2 eᵢ) - E(θ - π/2 eᵢ)] / 2\n        \"\"\"\n        gradient = np.zeros_like(params)\n        shift = np.pi / 2\n        \n        for i in range(len(params)):\n            params_plus = params.copy()\n            params_plus[i] += shift\n            \n            params_minus = params.copy()\n            params_minus[i] -= shift\n            \n            gradient[i] = (\n                self._compute_energy(params_plus) - \n                self._compute_energy(params_minus)\n            ) / 2.0\n        \n        return gradient\n    \n    def _adapt_tensor_network(self, gradient: np.ndarray):\n        \"\"\"\n        Adapt tensor network structure based on gradient information\n        \n        Increases bond dimension in regions of high gradient magnitude\n        \"\"\"\n        # Compute gradient magnitude per qubit\n        gradient_per_qubit = np.zeros(self.num_qubits)\n        params_per_qubit = len(gradient) // self.num_qubits\n        \n        for i in range(self.num_qubits):\n            start_idx = i * params_per_qubit\n            end_idx = min(start_idx + params_per_qubit, len(gradient))\n            gradient_per_qubit[i] = np.linalg.norm(\n                gradient[start_idx:end_idx]\n            )\n        \n        # Adapt bond dimensions\n        threshold = np.percentile(gradient_per_qubit, 75)\n        for i in range(self.num_qubits - 1):\n            if gradient_per_qubit[i] > threshold:\n                self.tensor_network.increase_bond_dim(i)\n    \n    def _bitstring_to_state(self, bitstring: str) -> np.ndarray:\n        \"\"\"Convert measurement bitstring to state vector\"\"\"\n        n = len(bitstring)\n        state = np.zeros(2**n, dtype=complex)\n        idx = int(bitstring, 2)\n        state[idx] = 1.0\n        return state\n    \n    def solve(\n        self, \n        initial_params: Optional[np.ndarray] = None,\n        max_iterations: int = 1000,\n        optimizer: str = 'adam'\n    ) -> Tuple[float, np.ndarray]:\n        \"\"\"\n        Solve for ground state energy\n        \n        Args:\n            initial_params: Initial circuit parameters\n            max_iterations: Maximum optimization iterations\n            optimizer: Optimization method ('adam', 'lbfgs', 'sgd')\n        \n        Returns:\n            ground_energy: Estimated ground state energy\n            optimal_params: Optimal circuit parameters\n        \"\"\"\n        # Initialize parameters\n        if initial_params is None:\n            num_params = self._estimate_num_parameters()\n            initial_params = np.random.randn(num_params) * 0.1\n        \n        params = initial_params.copy()\n        \n        print(f\"Starting QATNE optimization with {len(params)} parameters...\")\n        print(f\"Initial tensor network bond dimension: {self.tensor_network.bond_dim}\")\n        \n        for iteration in range(max_iterations):\n            # Compute energy and gradient\n            energy = self._compute_energy(params)\n            gradient = self._compute_gradient(params)\n            grad_norm = np.linalg.norm(gradient)\n            \n            # Store history\n            self.energy_history.append(energy)\n            self.parameter_history.append(params.copy())\n            self.gradient_norms.append(grad_norm)\n            \n            # Print progress\n            if iteration % 10 == 0:\n                print(f\"Iter {iteration:4d} | Energy: {energy:12.8f} | \"\n                      f\"||∇E||: {grad_norm:10.6f} | \"\n                      f\"Bond dim: {self.tensor_network.bond_dim}\")\n            \n            # Check convergence\n            if len(self.energy_history) > 1:\n                energy_change = abs(\n                    self.energy_history[-1] - self.energy_history[-2]\n                )\n                if energy_change < self.convergence_threshold:\n                    print(f\"\\nConverged after {iteration} iterations!\")\n                    break\n            \n            # Adapt tensor network every 50 iterations\n            if iteration % 50 == 0 and iteration > 0:\n                self._adapt_tensor_network(gradient)\n                # Resize parameters if network structure changed\n                if len(params) != self._estimate_num_parameters():\n                    params = self._resize_parameters(params)\n            \n            # Update parameters\n            learning_rate = 0.1 / np.sqrt(iteration + 1)\n            params -= learning_rate * gradient\n        \n        ground_energy = self.energy_history[-1]\n        optimal_params = self.parameter_history[-1]\n        \n        return ground_energy, optimal_params\n    \n    def _estimate_num_parameters(self) -> int:\n        \"\"\"Estimate number of parameters from tensor network structure\"\"\"\n        # Initial layer: 2 params per qubit\n        num_params = 2 * self.num_qubits\n        \n        # Entangling layers\n        for layer in range(self.tensor_network.num_layers):\n            pairs = self.tensor_network.get_entanglement_pairs(layer)\n            num_params += len(pairs)  # 1 param per entangling gate\n            num_params += 2 * self.num_qubits  # 2 params per qubit per layer\n        \n        return num_params\n    \n    def _resize_parameters(self, old_params: np.ndarray) -> np.ndarray:\n        \"\"\"Resize parameter array when tensor network structure changes\"\"\"\n        new_size = self._estimate_num_parameters()\n        if new_size > len(old_params):\n            # Add new parameters (initialized small)\n            new_params = np.concatenate([\n                old_params,\n                np.random.randn(new_size - len(old_params)) * 0.01\n            ])\n        else:\n            # Truncate parameters\n            new_params = old_params[:new_size]\n        return new_params\n    \n    def get_statevector(self, params: np.ndarray) -> np.ndarray:\n        \"\"\"Get quantum state vector for given parameters\"\"\"\n        circuit = self._build_adaptive_ansatz(params)\n        \n        # Use statevector simulator\n        from qiskit_aer import StatevectorSimulator\n        backend = StatevectorSimulator()\n        \n        job = backend.run(circuit)\n        result = job.result()\n        statevector = result.get_statevector()\n        \n        return np.array(statevector)\n    \n    def compute_fidelity(\n        self, \n        params: np.ndarray, \n        target_state: np.ndarray\n    ) -> float:\n        \"\"\"Compute fidelity with target state\"\"\"\n        state = self.get_statevector(params)\n        fidelity = np.abs(np.vdot(state, target_state))**2\n        return fidelity\n
+"""Quantum Adaptive Tensor Network Eigensolver implementation."""
+
+from typing import Optional, Tuple
+
+import numpy as np
+from qiskit import QuantumCircuit, QuantumRegister
+from qiskit_aer import AerSimulator, StatevectorSimulator
+
+
+class QATNESolver:
+    """Hybrid quantum-classical solver with adaptive tensor-network structure."""
+
+    def __init__(
+        self,
+        hamiltonian: np.ndarray,
+        num_qubits: int,
+        max_bond_dim: int = 32,
+        convergence_threshold: float = 1e-6,
+        shots: int = 8192,
+    ) -> None:
+        self.hamiltonian = hamiltonian
+        self.num_qubits = num_qubits
+        self.max_bond_dim = max_bond_dim
+        self.convergence_threshold = convergence_threshold
+        self.shots = shots
+
+        self.tensor_network = self._initialize_tensor_network()
+        self.backend = AerSimulator()
+
+        self.energy_history = []
+        self.parameter_history = []
+        self.gradient_norms = []
+
+    def _initialize_tensor_network(self):
+        from qatne.core.tensor_network import TensorNetwork
+
+        return TensorNetwork(num_sites=self.num_qubits, bond_dim=4, max_bond_dim=self.max_bond_dim)
+
+    def _build_adaptive_ansatz(self, params: np.ndarray) -> QuantumCircuit:
+        qr = QuantumRegister(self.num_qubits, "q")
+        circuit = QuantumCircuit(qr)
+
+        param_idx = 0
+        for i in range(self.num_qubits):
+            if param_idx < len(params):
+                circuit.ry(params[param_idx], qr[i])
+                param_idx += 1
+            if param_idx < len(params):
+                circuit.rz(params[param_idx], qr[i])
+                param_idx += 1
+
+        for layer in range(self.tensor_network.num_layers):
+            pairs = self.tensor_network.get_entanglement_pairs(layer)
+            for i, j in pairs:
+                circuit.cx(qr[i], qr[j])
+                if param_idx < len(params):
+                    circuit.ry(params[param_idx], qr[j])
+                    param_idx += 1
+                circuit.cx(qr[i], qr[j])
+
+            for i in range(self.num_qubits):
+                if param_idx < len(params) - 1:
+                    circuit.ry(params[param_idx], qr[i])
+                    param_idx += 1
+                    circuit.rz(params[param_idx], qr[i])
+                    param_idx += 1
+
+        return circuit
+
+    def _compute_energy(self, params: np.ndarray) -> float:
+        circuit = self._build_adaptive_ansatz(params)
+        circuit.measure_all()
+
+        result = self.backend.run(circuit, shots=self.shots).result()
+        counts = result.get_counts()
+
+        energy = 0.0
+        for bitstring, count in counts.items():
+            prob = count / self.shots
+            state_vector = self._bitstring_to_state(bitstring)
+            energy += prob * np.real(state_vector.conj().T @ self.hamiltonian @ state_vector)
+
+        return energy
+
+    def _compute_gradient(self, params: np.ndarray) -> np.ndarray:
+        gradient = np.zeros_like(params)
+        shift = np.pi / 2
+
+        for i in range(len(params)):
+            params_plus = params.copy()
+            params_plus[i] += shift
+            params_minus = params.copy()
+            params_minus[i] -= shift
+            gradient[i] = (self._compute_energy(params_plus) - self._compute_energy(params_minus)) / 2.0
+
+        return gradient
+
+    def _adapt_tensor_network(self, gradient: np.ndarray) -> None:
+        gradient_per_qubit = np.zeros(self.num_qubits)
+        params_per_qubit = max(1, len(gradient) // self.num_qubits)
+
+        for i in range(self.num_qubits):
+            start_idx = i * params_per_qubit
+            end_idx = min(start_idx + params_per_qubit, len(gradient))
+            gradient_per_qubit[i] = np.linalg.norm(gradient[start_idx:end_idx])
+
+        threshold = np.percentile(gradient_per_qubit, 75)
+        for i in range(self.num_qubits - 1):
+            if gradient_per_qubit[i] > threshold:
+                self.tensor_network.increase_bond_dim(i)
+
+    def _bitstring_to_state(self, bitstring: str) -> np.ndarray:
+        n = len(bitstring)
+        state = np.zeros(2**n, dtype=complex)
+        state[int(bitstring, 2)] = 1.0
+        return state
+
+    def solve(
+        self,
+        initial_params: Optional[np.ndarray] = None,
+        max_iterations: int = 1000,
+        optimizer: str = "adam",
+    ) -> Tuple[float, np.ndarray]:
+        if initial_params is None:
+            initial_params = np.random.randn(self._estimate_num_parameters()) * 0.1
+
+        params = initial_params.copy()
+        print(f"Starting QATNE optimization with {len(params)} parameters...")
+        print(f"Initial tensor network bond dimension: {self.tensor_network.bond_dim}")
+
+        for iteration in range(max_iterations):
+            energy = self._compute_energy(params)
+            gradient = self._compute_gradient(params)
+            grad_norm = np.linalg.norm(gradient)
+
+            self.energy_history.append(energy)
+            self.parameter_history.append(params.copy())
+            self.gradient_norms.append(grad_norm)
+
+            if iteration % 10 == 0:
+                print(
+                    f"Iter {iteration:4d} | Energy: {energy:12.8f} | "
+                    f"||∇E||: {grad_norm:10.6f} | "
+                    f"Bond dim: {self.tensor_network.bond_dim}"
+                )
+
+            if len(self.energy_history) > 1:
+                energy_change = abs(self.energy_history[-1] - self.energy_history[-2])
+                if energy_change < self.convergence_threshold:
+                    print(f"\nConverged after {iteration} iterations!")
+                    break
+
+            if iteration % 50 == 0 and iteration > 0:
+                self._adapt_tensor_network(gradient)
+                if len(params) != self._estimate_num_parameters():
+                    params = self._resize_parameters(params)
+
+            learning_rate = 0.1 / np.sqrt(iteration + 1)
+            params -= learning_rate * gradient
+
+        return self.energy_history[-1], self.parameter_history[-1]
+
+    def _estimate_num_parameters(self) -> int:
+        num_params = 2 * self.num_qubits
+        for layer in range(self.tensor_network.num_layers):
+            pairs = self.tensor_network.get_entanglement_pairs(layer)
+            num_params += len(pairs)
+            num_params += 2 * self.num_qubits
+        return num_params
+
+    def _resize_parameters(self, old_params: np.ndarray) -> np.ndarray:
+        new_size = self._estimate_num_parameters()
+        if new_size > len(old_params):
+            return np.concatenate([old_params, np.random.randn(new_size - len(old_params)) * 0.01])
+        return old_params[:new_size]
+
+    def get_statevector(self, params: np.ndarray) -> np.ndarray:
+        circuit = self._build_adaptive_ansatz(params)
+        result = StatevectorSimulator().run(circuit).result()
+        return np.array(result.get_statevector())
+
+    def compute_fidelity(self, params: np.ndarray, target_state: np.ndarray) -> float:
+        state = self.get_statevector(params)
+        return np.abs(np.vdot(state, target_state)) ** 2

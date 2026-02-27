@@ -1,10 +1,19 @@
 """Quantum Adaptive Tensor Network Eigensolver implementation."""
 
-from typing import Optional, Tuple
+from __future__ import annotations
+
+import logging
+from typing import Literal
 
 import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister
 from qiskit_aer import AerSimulator, StatevectorSimulator
+from tqdm.auto import trange
+
+from qatne.core.exceptions import QATNEError
+from qatne.core.tensor_network import TensorNetwork
+
+LOGGER = logging.getLogger(__name__)
 
 
 class QATNESolver:
@@ -17,24 +26,26 @@ class QATNESolver:
         max_bond_dim: int = 32,
         convergence_threshold: float = 1e-6,
         shots: int = 8192,
+        show_progress: bool = True,
     ) -> None:
+        if hamiltonian.ndim != 2 or hamiltonian.shape[0] != hamiltonian.shape[1]:
+            raise QATNEError("hamiltonian must be a square matrix")
+        if shots < 1:
+            raise QATNEError("shots must be >= 1")
+
         self.hamiltonian = hamiltonian
         self.num_qubits = num_qubits
         self.max_bond_dim = max_bond_dim
         self.convergence_threshold = convergence_threshold
         self.shots = shots
+        self.show_progress = show_progress
 
-        self.tensor_network = self._initialize_tensor_network()
+        self.tensor_network = TensorNetwork(num_sites=self.num_qubits, bond_dim=4, max_bond_dim=self.max_bond_dim)
         self.backend = AerSimulator()
 
-        self.energy_history = []
-        self.parameter_history = []
-        self.gradient_norms = []
-
-    def _initialize_tensor_network(self):
-        from qatne.core.tensor_network import TensorNetwork
-
-        return TensorNetwork(num_sites=self.num_qubits, bond_dim=4, max_bond_dim=self.max_bond_dim)
+        self.energy_history: list[float] = []
+        self.parameter_history: list[np.ndarray] = []
+        self.gradient_norms: list[float] = []
 
     def _build_adaptive_ansatz(self, params: np.ndarray) -> QuantumCircuit:
         qr = QuantumRegister(self.num_qubits, "q")
@@ -43,10 +54,10 @@ class QATNESolver:
         param_idx = 0
         for i in range(self.num_qubits):
             if param_idx < len(params):
-                circuit.ry(params[param_idx], qr[i])
+                circuit.ry(float(params[param_idx]), qr[i])
                 param_idx += 1
             if param_idx < len(params):
-                circuit.rz(params[param_idx], qr[i])
+                circuit.rz(float(params[param_idx]), qr[i])
                 param_idx += 1
 
         for layer in range(self.tensor_network.num_layers):
@@ -54,15 +65,15 @@ class QATNESolver:
             for i, j in pairs:
                 circuit.cx(qr[i], qr[j])
                 if param_idx < len(params):
-                    circuit.ry(params[param_idx], qr[j])
+                    circuit.ry(float(params[param_idx]), qr[j])
                     param_idx += 1
                 circuit.cx(qr[i], qr[j])
 
             for i in range(self.num_qubits):
                 if param_idx < len(params) - 1:
-                    circuit.ry(params[param_idx], qr[i])
+                    circuit.ry(float(params[param_idx]), qr[i])
                     param_idx += 1
-                    circuit.rz(params[param_idx], qr[i])
+                    circuit.rz(float(params[param_idx]), qr[i])
                     param_idx += 1
 
         return circuit
@@ -80,7 +91,7 @@ class QATNESolver:
             state_vector = self._bitstring_to_state(bitstring)
             energy += prob * np.real(state_vector.conj().T @ self.hamiltonian @ state_vector)
 
-        return energy
+        return float(energy)
 
     def _compute_gradient(self, params: np.ndarray) -> np.ndarray:
         gradient = np.zeros_like(params)
@@ -117,38 +128,40 @@ class QATNESolver:
 
     def solve(
         self,
-        initial_params: Optional[np.ndarray] = None,
+        initial_params: np.ndarray | None = None,
         max_iterations: int = 1000,
-        optimizer: str = "adam",
-    ) -> Tuple[float, np.ndarray]:
+        optimizer: Literal["adam", "gradient_descent"] = "adam",
+    ) -> tuple[float, np.ndarray]:
+        if optimizer not in {"adam", "gradient_descent"}:
+            raise QATNEError(f"Unsupported optimizer '{optimizer}'")
+
         if initial_params is None:
             initial_params = np.random.randn(self._estimate_num_parameters()) * 0.1
 
         params = initial_params.copy()
-        print(f"Starting QATNE optimization with {len(params)} parameters...")
-        print(f"Initial tensor network bond dimension: {self.tensor_network.bond_dim}")
+        LOGGER.info("Starting QATNE optimization with %d parameters", len(params))
+        LOGGER.info("Initial tensor network bond dimension: %d", self.tensor_network.bond_dim)
 
-        for iteration in range(max_iterations):
+        iterator = trange(max_iterations, disable=not self.show_progress, desc="QATNE")
+        for iteration in iterator:
             energy = self._compute_energy(params)
             gradient = self._compute_gradient(params)
-            grad_norm = np.linalg.norm(gradient)
+            grad_norm = float(np.linalg.norm(gradient))
 
             self.energy_history.append(energy)
             self.parameter_history.append(params.copy())
             self.gradient_norms.append(grad_norm)
 
-            if iteration % 10 == 0:
-                print(
-                    f"Iter {iteration:4d} | Energy: {energy:12.8f} | "
-                    f"||∇E||: {grad_norm:10.6f} | "
-                    f"Bond dim: {self.tensor_network.bond_dim}"
-                )
+            if self.show_progress:
+                iterator.set_postfix(energy=f"{energy:.6f}", grad=f"{grad_norm:.6f}", bond=self.tensor_network.bond_dim)
+            elif iteration % 10 == 0:
+                LOGGER.info("Iter %d Energy %.8f Grad %.6f Bond %d", iteration, energy, grad_norm, self.tensor_network.bond_dim)
 
             if len(self.energy_history) > 1:
                 energy_change = abs(self.energy_history[-1] - self.energy_history[-2])
                 if energy_change < self.convergence_threshold:
-                    print(f"\nConverged after {iteration} iterations!")
-                    break
+                    LOGGER.info("Converged after %d iterations", iteration)
+                    return self.energy_history[-1], self.parameter_history[-1]
 
             if iteration % 50 == 0 and iteration > 0:
                 self._adapt_tensor_network(gradient)
@@ -158,6 +171,7 @@ class QATNESolver:
             learning_rate = 0.1 / np.sqrt(iteration + 1)
             params -= learning_rate * gradient
 
+        LOGGER.warning("QATNE did not meet convergence threshold in %d iterations", max_iterations)
         return self.energy_history[-1], self.parameter_history[-1]
 
     def _estimate_num_parameters(self) -> int:
@@ -181,4 +195,4 @@ class QATNESolver:
 
     def compute_fidelity(self, params: np.ndarray, target_state: np.ndarray) -> float:
         state = self.get_statevector(params)
-        return np.abs(np.vdot(state, target_state)) ** 2
+        return float(np.abs(np.vdot(state, target_state)) ** 2)

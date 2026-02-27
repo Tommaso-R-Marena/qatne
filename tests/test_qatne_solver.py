@@ -9,6 +9,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from qatne.algorithms.qatne_solver import QATNESolver
+from qatne.core.exceptions import QATNEError
 
 
 class TestQATNESolver:
@@ -235,9 +236,8 @@ class TestErrorHandling:
         # Non-square matrix
         H_invalid = np.random.randn(4, 5)
         
-        # Should handle gracefully (may not raise error immediately)
-        solver = QATNESolver(hamiltonian=H_invalid, num_qubits=2)
-        assert solver.hamiltonian.shape == H_invalid.shape
+        with pytest.raises(QATNEError):
+            QATNESolver(hamiltonian=H_invalid, num_qubits=2)
     
     def test_zero_shots(self):
         """Test behavior with very low shots."""

@@ -9,8 +9,8 @@ import pytest
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from qatne.algorithms.qatne_solver import QATNESolver
-from qatne.core.exceptions import QATNEError
+from qatne.algorithms.qatne_solver import QATNESolver  # noqa: E402
+from qatne.core.exceptions import QATNEError  # noqa: E402
 
 
 class TestQATNESolver:

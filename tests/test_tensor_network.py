@@ -9,7 +9,7 @@ import pytest
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from qatne.core.tensor_network import TensorNetwork
+from qatne.core.tensor_network import TensorNetwork  # noqa: E402
 
 
 class TestTensorNetwork:

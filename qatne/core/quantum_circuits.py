@@ -14,7 +14,7 @@ class BaseAnsatz(ABC):
     """Abstract interface for ansatz builders."""
 
     @abstractmethod
-    def build_circuit(self, params: np.ndarray, entanglement_pairs: list[tuple[int, int]]) -> QuantumCircuit:
+    def build_circuit(self, params: np.ndarray, num_layers: int, entanglement_pairs_by_layer: list[list[tuple[int, int]]]) -> QuantumCircuit:
         """Build and return a parameterized quantum circuit."""
 
 
@@ -34,15 +34,17 @@ class AdaptiveAnsatz(BaseAnsatz):
             raise QuantumCircuitError("num_qubits must be >= 1")
         self.num_qubits = num_qubits
 
-    def build_circuit(self, params: np.ndarray, entanglement_pairs: list[tuple[int, int]]) -> QuantumCircuit:
+    def build_circuit(self, params: np.ndarray, num_layers: int, entanglement_pairs_by_layer: list[list[tuple[int, int]]]) -> QuantumCircuit:
         """Build quantum circuit with specified entanglement structure.
 
         Parameters
         ----------
         params : np.ndarray
             Circuit parameters.
-        entanglement_pairs : list[tuple[int, int]]
-            List of qubit pairs to entangle.
+        num_layers : int
+            Number of entangling layers.
+        entanglement_pairs_by_layer : list[list[tuple[int, int]]]
+            List of qubit pairs to entangle for each layer.
 
         Returns
         -------
@@ -53,17 +55,35 @@ class AdaptiveAnsatz(BaseAnsatz):
         circuit = QuantumCircuit(qr)
 
         param_idx = 0
+
+        # Initial RY and RZ gates on each qubit
         for i in range(self.num_qubits):
             if param_idx < len(params):
                 circuit.ry(float(params[param_idx]), qr[i])
                 param_idx += 1
-
-        for i, j in entanglement_pairs:
-            if not (0 <= i < self.num_qubits and 0 <= j < self.num_qubits):
-                raise QuantumCircuitError(f"invalid entanglement pair ({i}, {j})")
-            circuit.cx(qr[i], qr[j])
             if param_idx < len(params):
-                circuit.ry(float(params[param_idx]), qr[j])
+                circuit.rz(float(params[param_idx]), qr[i])
                 param_idx += 1
+
+        for layer in range(num_layers):
+            pairs = entanglement_pairs_by_layer[layer] if layer < len(entanglement_pairs_by_layer) else []
+            for i, j in pairs:
+                if not (0 <= i < self.num_qubits and 0 <= j < self.num_qubits):
+                    raise QuantumCircuitError(f"invalid entanglement pair ({i}, {j})")
+
+                circuit.cx(qr[i], qr[j])
+                if param_idx < len(params):
+                    circuit.ry(float(params[param_idx]), qr[j])
+                    param_idx += 1
+                circuit.cx(qr[i], qr[j])
+
+            # Rotation layer
+            for i in range(self.num_qubits):
+                if param_idx < len(params):
+                    circuit.ry(float(params[param_idx]), qr[i])
+                    param_idx += 1
+                if param_idx < len(params):
+                    circuit.rz(float(params[param_idx]), qr[i])
+                    param_idx += 1
 
         return circuit

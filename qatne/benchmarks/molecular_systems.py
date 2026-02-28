@@ -2,8 +2,9 @@
 Molecular benchmark systems for testing QATNE.
 """
 
-import numpy as np
 from typing import Tuple
+
+import numpy as np
 
 
 def create_h2_hamiltonian(bond_length: float = 0.735) -> Tuple[np.ndarray, int, float]:

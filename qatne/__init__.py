@@ -9,8 +9,8 @@ __version__ = "1.0.0"
 __author__ = "Tommaso R. Marena"
 
 from qatne.algorithms.qatne_solver import QATNESolver
-from qatne.core.tensor_network import TensorNetwork
 from qatne.core.hamiltonian import MolecularHamiltonian
+from qatne.core.tensor_network import TensorNetwork
 
 __all__ = [
     "QATNESolver",

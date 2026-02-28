@@ -14,7 +14,12 @@ class BaseAnsatz(ABC):
     """Abstract interface for ansatz builders."""
 
     @abstractmethod
-    def build_circuit(self, params: np.ndarray, num_layers: int, entanglement_pairs_by_layer: list[list[tuple[int, int]]]) -> QuantumCircuit:
+    def build_circuit(
+        self,
+        params: np.ndarray,
+        num_layers: int,
+        entanglement_pairs_by_layer: list[list[tuple[int, int]]],
+    ) -> QuantumCircuit:
         """Build and return a parameterized quantum circuit."""
 
 
@@ -34,7 +39,12 @@ class AdaptiveAnsatz(BaseAnsatz):
             raise QuantumCircuitError("num_qubits must be >= 1")
         self.num_qubits = num_qubits
 
-    def build_circuit(self, params: np.ndarray, num_layers: int, entanglement_pairs_by_layer: list[list[tuple[int, int]]]) -> QuantumCircuit:
+    def build_circuit(
+        self,
+        params: np.ndarray,
+        num_layers: int,
+        entanglement_pairs_by_layer: list[list[tuple[int, int]]],
+    ) -> QuantumCircuit:
         """Build quantum circuit with specified entanglement structure.
 
         Parameters
@@ -66,7 +76,11 @@ class AdaptiveAnsatz(BaseAnsatz):
                 param_idx += 1
 
         for layer in range(num_layers):
-            pairs = entanglement_pairs_by_layer[layer] if layer < len(entanglement_pairs_by_layer) else []
+            pairs = (
+                entanglement_pairs_by_layer[layer]
+                if layer < len(entanglement_pairs_by_layer)
+                else []
+            )
             for i, j in pairs:
                 if not (0 <= i < self.num_qubits and 0 <= j < self.num_qubits):
                     raise QuantumCircuitError(f"invalid entanglement pair ({i}, {j})")

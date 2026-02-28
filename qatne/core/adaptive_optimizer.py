@@ -11,7 +11,9 @@ class BaseOptimizer(ABC):
     """Abstract base class for optimizers used by QATNE."""
 
     @abstractmethod
-    def step(self, params: np.ndarray, gradient: np.ndarray, iteration: int) -> np.ndarray:
+    def step(
+        self, params: np.ndarray, gradient: np.ndarray, iteration: int
+    ) -> np.ndarray:
         """Perform one optimization step and return updated parameters."""
 
     @abstractmethod
@@ -25,7 +27,9 @@ class GradientDescentOptimizer(BaseOptimizer):
     def __init__(self, learning_rate: float = 0.1):
         self.learning_rate = learning_rate
 
-    def step(self, params: np.ndarray, gradient: np.ndarray, iteration: int) -> np.ndarray:
+    def step(
+        self, params: np.ndarray, gradient: np.ndarray, iteration: int
+    ) -> np.ndarray:
         lr = self.learning_rate / np.sqrt(iteration + 1)
         return params - lr * gradient
 
@@ -36,7 +40,13 @@ class GradientDescentOptimizer(BaseOptimizer):
 class AdamOptimizer(BaseOptimizer):
     """Adaptive Moment Estimation (Adam) optimizer."""
 
-    def __init__(self, learning_rate: float = 0.01, beta1: float = 0.9, beta2: float = 0.999, epsilon: float = 1e-8):
+    def __init__(
+        self,
+        learning_rate: float = 0.01,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        epsilon: float = 1e-8,
+    ):
         self.learning_rate = learning_rate
         self.beta1 = beta1
         self.beta2 = beta2
@@ -45,7 +55,9 @@ class AdamOptimizer(BaseOptimizer):
         self.m = None
         self.v = None
 
-    def step(self, params: np.ndarray, gradient: np.ndarray, iteration: int) -> np.ndarray:
+    def step(
+        self, params: np.ndarray, gradient: np.ndarray, iteration: int
+    ) -> np.ndarray:
         if self.m is None:
             self.m = np.zeros_like(params)
             self.v = np.zeros_like(params)

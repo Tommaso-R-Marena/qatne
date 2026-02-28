@@ -44,7 +44,9 @@ def plot_convergence(
     ax.plot(iterations, energy_history, "b-", linewidth=2, label="QATNE Energy")
 
     if exact_energy is not None:
-        ax.axhline(exact_energy, color="red", linestyle="--", linewidth=2, label="Exact (FCI)")
+        ax.axhline(
+            exact_energy, color="red", linestyle="--", linewidth=2, label="Exact (FCI)"
+        )
 
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Energy (Ha)")
@@ -85,7 +87,14 @@ def plot_energy_landscape(
                 y=Theta2,
                 z=energy_surface,
                 colorscale="Viridis",
-                contours={"z": {"show": True, "usecolormap": True, "highlightcolor": "limegreen", "project": {"z": True}}},
+                contours={
+                    "z": {
+                        "show": True,
+                        "usecolormap": True,
+                        "highlightcolor": "limegreen",
+                        "project": {"z": True},
+                    }
+                },
             )
         ]
     )
@@ -135,7 +144,9 @@ def plot_tensor_network_structure(
     pos = nx.spring_layout(G, k=1.5, iterations=50)
 
     # Draw nodes
-    nx.draw_networkx_nodes(G, pos, node_color="lightblue", node_size=1200, alpha=0.9, ax=ax)
+    nx.draw_networkx_nodes(
+        G, pos, node_color="lightblue", node_size=1200, alpha=0.9, ax=ax
+    )
 
     # Draw edges with width proportional to bond dimension
     edges = G.edges()
@@ -149,7 +160,9 @@ def plot_tensor_network_structure(
     edge_labels = {(u, v): f"χ={G[u][v]['weight']}" for u, v in edges}
     nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=8, ax=ax)
 
-    ax.set_title(title + "\n(Edge width ∝ bond dimension)", fontsize=14, fontweight="bold")
+    ax.set_title(
+        title + "\n(Edge width ∝ bond dimension)", fontsize=14, fontweight="bold"
+    )
     ax.axis("off")
 
     if save_path:
@@ -213,7 +226,9 @@ def plot_statistical_analysis(
     ax = axes[0, 0]
     ax.hist(trial_energies, bins=12, alpha=0.7, color="steelblue", edgecolor="black")
     ax.axvline(exact_energy, color="red", linestyle="--", linewidth=2, label="Exact")
-    ax.axvline(np.mean(trial_energies), color="green", linestyle="-", linewidth=2, label="Mean")
+    ax.axvline(
+        np.mean(trial_energies), color="green", linestyle="-", linewidth=2, label="Mean"
+    )
     ax.set_xlabel("Energy (Ha)")
     ax.set_ylabel("Frequency")
     ax.set_title("Energy Distribution")
@@ -266,7 +281,9 @@ def plot_bond_dimension_evolution(
         Path to save the figure.
     """
     fig, ax = plt.subplots(figsize=(14, 6))
-    im = ax.imshow(bond_dim_history, aspect="auto", cmap="YlOrRd", interpolation="nearest")
+    im = ax.imshow(
+        bond_dim_history, aspect="auto", cmap="YlOrRd", interpolation="nearest"
+    )
 
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Bond Index")
@@ -337,22 +354,56 @@ def create_interactive_dashboard(
     fig = make_subplots(
         rows=2,
         cols=2,
-        subplot_titles=("Energy Convergence", "Gradient Norm", "Average Bond Dimension", "Parameter Space Trajectory"),
+        subplot_titles=(
+            "Energy Convergence",
+            "Gradient Norm",
+            "Average Bond Dimension",
+            "Parameter Space Trajectory",
+        ),
     )
 
     # Energy
-    fig.add_trace(go.Scatter(x=iterations, y=energy, mode="lines", name="Energy", line=dict(color="blue")), row=1, col=1)
+    fig.add_trace(
+        go.Scatter(
+            x=iterations, y=energy, mode="lines", name="Energy", line=dict(color="blue")
+        ),
+        row=1,
+        col=1,
+    )
     if exact_energy is not None:
-        fig.add_hline(y=exact_energy, line_dash="dash", line_color="red", annotation_text="Exact", row=1, col=1)
+        fig.add_hline(
+            y=exact_energy,
+            line_dash="dash",
+            line_color="red",
+            annotation_text="Exact",
+            row=1,
+            col=1,
+        )
 
     # Gradient
     fig.add_trace(
-        go.Scatter(x=iterations, y=gradient_norm, mode="lines", name="||∇E||", line=dict(color="green")), row=1, col=2
+        go.Scatter(
+            x=iterations,
+            y=gradient_norm,
+            mode="lines",
+            name="||∇E||",
+            line=dict(color="green"),
+        ),
+        row=1,
+        col=2,
     )
 
     # Bond dimension
     fig.add_trace(
-        go.Scatter(x=iterations, y=bond_dim_avg, mode="lines", name="Avg χ", line=dict(color="purple")), row=2, col=1
+        go.Scatter(
+            x=iterations,
+            y=bond_dim_avg,
+            mode="lines",
+            name="Avg χ",
+            line=dict(color="purple"),
+        ),
+        row=2,
+        col=1,
     )
 
     # Trajectory
@@ -363,13 +414,19 @@ def create_interactive_dashboard(
                 y=params_trajectory[:, 1],
                 mode="lines+markers",
                 name="Trajectory",
-                marker=dict(size=4, color=iterations, colorscale="Viridis", showscale=True),
+                marker=dict(
+                    size=4, color=iterations, colorscale="Viridis", showscale=True
+                ),
             ),
             row=2,
             col=2,
         )
 
-    fig.update_layout(height=800, title_text="QATNE Interactive Optimization Dashboard", showlegend=False)
+    fig.update_layout(
+        height=800,
+        title_text="QATNE Interactive Optimization Dashboard",
+        showlegend=False,
+    )
     fig.update_xaxes(title_text="Iteration", row=1, col=1)
     fig.update_xaxes(title_text="Iteration", row=1, col=2)
     fig.update_xaxes(title_text="Iteration", row=2, col=1)

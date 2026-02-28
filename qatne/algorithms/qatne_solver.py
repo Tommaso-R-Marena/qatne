@@ -43,7 +43,9 @@ class QATNESolver:
         self.shots = shots
         self.show_progress = show_progress
 
-        self.tensor_network = TensorNetwork(num_sites=self.num_qubits, bond_dim=4, max_bond_dim=self.max_bond_dim)
+        self.tensor_network = TensorNetwork(
+            num_sites=self.num_qubits, bond_dim=4, max_bond_dim=self.max_bond_dim
+        )
         self.ansatz = AdaptiveAnsatz(num_qubits=self.num_qubits)
         self.backend = AerSimulator()
 
@@ -57,7 +59,9 @@ class QATNESolver:
             self.tensor_network.get_entanglement_pairs(layer)
             for layer in range(self.tensor_network.num_layers)
         ]
-        return self.ansatz.build_circuit(params, self.tensor_network.num_layers, entanglement_pairs_by_layer)
+        return self.ansatz.build_circuit(
+            params, self.tensor_network.num_layers, entanglement_pairs_by_layer
+        )
 
     def _compute_energy(self, params: np.ndarray) -> float:
         circuit = self._build_adaptive_ansatz(params)
@@ -83,7 +87,9 @@ class QATNESolver:
             params_plus[i] += shift
             params_minus = params.copy()
             params_minus[i] -= shift
-            gradient[i] = (self._compute_energy(params_plus) - self._compute_energy(params_minus)) / 2.0
+            gradient[i] = (
+                self._compute_energy(params_plus) - self._compute_energy(params_minus)
+            ) / 2.0
 
         return gradient
 
@@ -119,14 +125,16 @@ class QATNESolver:
         elif optimizer_type == "gradient_descent":
             optimizer = GradientDescentOptimizer(learning_rate=0.1)
         else:
-             raise QATNEError(f"Unsupported optimizer type: {optimizer_type}")
+            raise QATNEError(f"Unsupported optimizer type: {optimizer_type}")
 
         if initial_params is None:
             initial_params = np.random.randn(self._estimate_num_parameters()) * 0.1
 
         params = initial_params.copy()
         LOGGER.info("Starting QATNE optimization with %d parameters", len(params))
-        LOGGER.info("Initial tensor network bond dimension: %d", self.tensor_network.bond_dim)
+        LOGGER.info(
+            "Initial tensor network bond dimension: %d", self.tensor_network.bond_dim
+        )
 
         iterator = trange(max_iterations, disable=not self.show_progress, desc="QATNE")
         for iteration in iterator:
@@ -140,9 +148,19 @@ class QATNESolver:
             self.bond_dim_history.append(self.tensor_network.bond_dims.copy())
 
             if self.show_progress:
-                iterator.set_postfix(energy=f"{energy:.6f}", grad=f"{grad_norm:.6f}", bond=self.tensor_network.bond_dim)
+                iterator.set_postfix(
+                    energy=f"{energy:.6f}",
+                    grad=f"{grad_norm:.6f}",
+                    bond=self.tensor_network.bond_dim,
+                )
             elif iteration % 10 == 0:
-                LOGGER.info("Iter %d Energy %.8f Grad %.6f Bond %d", iteration, energy, grad_norm, self.tensor_network.bond_dim)
+                LOGGER.info(
+                    "Iter %d Energy %.8f Grad %.6f Bond %d",
+                    iteration,
+                    energy,
+                    grad_norm,
+                    self.tensor_network.bond_dim,
+                )
 
             if len(self.energy_history) > 1:
                 energy_change = abs(self.energy_history[-1] - self.energy_history[-2])
@@ -158,7 +176,9 @@ class QATNESolver:
 
             params = optimizer.step(params, gradient, iteration)
 
-        LOGGER.warning("QATNE did not meet convergence threshold in %d iterations", max_iterations)
+        LOGGER.warning(
+            "QATNE did not meet convergence threshold in %d iterations", max_iterations
+        )
         return self.energy_history[-1], self.parameter_history[-1]
 
     def _estimate_num_parameters(self) -> int:
@@ -178,11 +198,13 @@ class QATNESolver:
     def _resize_parameters(self, old_params: np.ndarray) -> np.ndarray:
         new_size = self._estimate_num_parameters()
         if new_size > len(old_params):
-            return np.concatenate([old_params, np.random.randn(new_size - len(old_params)) * 0.01])
+            return np.concatenate(
+                [old_params, np.random.randn(new_size - len(old_params)) * 0.01]
+            )
         # If the parameter list is smaller, we keep the old ones (likely it never happens)
         # but the test expects it to be at least as large.
         if new_size < len(old_params):
-             return old_params[:new_size]
+            return old_params[:new_size]
         return old_params
 
     def get_statevector(self, params: np.ndarray) -> np.ndarray:

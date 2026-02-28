@@ -37,6 +37,8 @@ setup(
         "openfermion>=1.5.0",
         "openfermionpyscf>=0.5",
         "pyscf>=2.0.0",
+        "plotly>=5.0.0",
+        "networkx>=2.5",
     ],
     extras_require={
         "dev": [

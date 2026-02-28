@@ -23,7 +23,9 @@ def compute_energy_error(approx_energy: float, exact_energy: float) -> float:
     return float(np.abs(approx_energy - exact_energy))
 
 
-def compute_statistical_metrics(energies: list[float], exact_energy: float) -> dict[str, float]:
+def compute_statistical_metrics(
+    energies: list[float], exact_energy: float
+) -> dict[str, float]:
     """Compute comprehensive statistical metrics from multiple trials.
 
     Parameters

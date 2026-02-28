@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -96,7 +96,13 @@ class TensorNetwork:
         new_dim = min(current_dim * 2, self.max_bond_dim)
         self.bond_dims[(site, site + 1)] = new_dim
         self.bond_dim = max(self.bond_dims.values(), default=self.bond_dim)
-        LOGGER.debug("Increased bond dimension for (%d,%d): %d -> %d", site, site + 1, current_dim, new_dim)
+        LOGGER.debug(
+            "Increased bond dimension for (%d,%d): %d -> %d",
+            site,
+            site + 1,
+            current_dim,
+            new_dim,
+        )
 
     def get_bond_dim(self, site: int) -> int:
         """Get bond dimension at a specific bond."""
@@ -104,7 +110,9 @@ class TensorNetwork:
             raise TensorNetworkError(f"invalid site index {site}")
         return self.bond_dims.get((site, site + 1), self.bond_dim)
 
-    def compute_entanglement_entropy(self, state_vector: np.ndarray, partition: int) -> float:
+    def compute_entanglement_entropy(
+        self, state_vector: np.ndarray, partition: int
+    ) -> float:
         """Compute von Neumann entropy across a bipartition."""
         if partition <= 0 or partition >= self.num_sites:
             raise TensorNetworkError("partition must satisfy 0 < partition < num_sites")
@@ -115,7 +123,9 @@ class TensorNetwork:
                 f"state_vector has size {state_vector.size}, expected {expected_dim}"
             )
 
-        state_matrix = state_vector.reshape(2**partition, 2 ** (self.num_sites - partition))
+        state_matrix = state_vector.reshape(
+            2**partition, 2 ** (self.num_sites - partition)
+        )
         rho_a = state_matrix @ state_matrix.conj().T
         eigenvalues = np.linalg.eigvalsh(rho_a)
         eigenvalues = eigenvalues[eigenvalues > 1e-12]

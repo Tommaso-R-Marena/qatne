@@ -74,7 +74,7 @@ class QATNESolver:
     def _compute_energy(self, params: np.ndarray) -> float:
         circuit = self._build_adaptive_ansatz(params)
         pub = (circuit, self.hamiltonian_obj.op)
-        job = self.estimator.run([pub], precision=1.0/np.sqrt(self.shots))
+        job = self.estimator.run([pub], precision=1.0 / np.sqrt(self.shots))
         result = job.result()
         return float(result[0].data.evs)
 

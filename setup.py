@@ -31,7 +31,7 @@ setup(
         "matplotlib>=3.4.0",
         "seaborn>=0.11.0",
         "qiskit>=1.0.0",
-        "qiskit-aer>=0.13.0",
+        "qiskit-aer>=0.15.0",
         "qiskit-ibm-runtime>=0.15.0",
         "tensornetwork>=0.4.6",
         "openfermion>=1.5.0",

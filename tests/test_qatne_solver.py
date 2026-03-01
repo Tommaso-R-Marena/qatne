@@ -81,7 +81,9 @@ class TestQATNESolver:
 
         # Energy should be within bounds
         eigenvalues = np.linalg.eigvalsh(H)
-        assert eigenvalues.min() <= energy <= eigenvalues.max()
+        # Use a small tolerance for finite shots
+        tol = 4.0 / np.sqrt(solver.shots)
+        assert eigenvalues.min() - tol <= energy <= eigenvalues.max() + tol
 
     def test_gradient_computation(self, simple_hamiltonian):
         """Test gradient computation via parameter shift."""

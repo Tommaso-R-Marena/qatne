@@ -3,22 +3,56 @@
 from __future__ import annotations
 
 import numpy as np
+from qiskit.quantum_info import SparsePauliOp
 
 from qatne.core.exceptions import QATNEError
 
 
 class MolecularHamiltonian:
-    """Molecular Hamiltonian in qubit representation."""
+    """Molecular Hamiltonian in qubit representation.
 
-    def __init__(self, matrix: np.ndarray):
-        if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
-            raise QATNEError("Hamiltonian must be a square matrix")
-        dim = matrix.shape[0]
-        if dim & (dim - 1) != 0:
-            raise QATNEError("Hamiltonian dimension must be a power of 2")
+    Supports initialization from dense matrices, SparsePauliOp, or Pauli strings.
+    """
 
-        self.matrix = matrix
-        self.num_qubits = int(np.log2(dim))
+    def __init__(
+        self,
+        data: np.ndarray | SparsePauliOp | str | list[tuple[str, complex]],
+    ):
+        if isinstance(data, np.ndarray):
+            if data.ndim != 2 or data.shape[0] != data.shape[1]:
+                raise QATNEError("Hamiltonian matrix must be square")
+            dim = data.shape[0]
+            if dim & (dim - 1) != 0:
+                raise QATNEError("Hamiltonian dimension must be a power of 2")
+            self.matrix = data
+            self.op = SparsePauliOp.from_operator(data)
+            self.num_qubits = int(np.log2(dim))
+        elif isinstance(data, SparsePauliOp):
+            self.op = data
+            self.num_qubits = data.num_qubits
+            self.matrix = data.to_matrix()
+        elif isinstance(data, (str, list)):
+            try:
+                self.op = SparsePauliOp(data)
+                self.num_qubits = self.op.num_qubits
+                self.matrix = self.op.to_matrix()
+            except Exception as e:
+                raise QATNEError(f"Failed to initialize SparsePauliOp from data: {e}")
+        else:
+            raise QATNEError(f"Unsupported Hamiltonian data type: {type(data)}")
+
+        # Handle zero operator or very small coefficients that Qiskit simplifies to empty
+        # Qiskit EstimatorV2 raises ValueError: Empty observable was detected if it's purely zero.
+        # We ensure it has a term that won't be simplified away.
+        simplified_op = self.op.simplify()
+        if len(simplified_op.coeffs) == 0 or np.allclose(simplified_op.coeffs, 0):
+            # Using a term with a coefficient that is large enough to not be simplified,
+            # but small enough to not affect typical chemical accuracy (1e-3 Ha).
+            self.op = SparsePauliOp("I" * self.num_qubits, coeffs=[1e-6])
+            # Update matrix to match the dummy operator
+            self.matrix = self.op.to_matrix()
+        else:
+            self.op = simplified_op
 
     def get_ground_energy(self) -> float:
         """Compute exact ground-state energy via diagonalization."""

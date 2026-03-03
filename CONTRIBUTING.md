@@ -33,7 +33,7 @@ This project adheres to a code of conduct that all contributors are expected to 
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.9 or higher
 - Git
 - Familiarity with quantum computing concepts (helpful but not required)
 - Basic understanding of tensor networks (for core development)

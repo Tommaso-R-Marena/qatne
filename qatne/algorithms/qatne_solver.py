@@ -7,7 +7,9 @@ from typing import Literal
 
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit_aer import AerSimulator, StatevectorSimulator
+from qiskit.quantum_info import SparsePauliOp
+from qiskit_aer import AerSimulator
+from qiskit_aer.primitives import EstimatorV2
 from tqdm.auto import trange
 
 from qatne.core.adaptive_optimizer import AdamOptimizer, GradientDescentOptimizer
@@ -25,19 +27,25 @@ class QATNESolver:
 
     def __init__(
         self,
-        hamiltonian: np.ndarray | MolecularHamiltonian,
+        hamiltonian: np.ndarray | MolecularHamiltonian | SparsePauliOp | str,
         num_qubits: int | None = None,
         max_bond_dim: int = 32,
         convergence_threshold: float = 1e-6,
         shots: int = 8192,
         show_progress: bool = True,
     ) -> None:
-        if isinstance(hamiltonian, np.ndarray):
-            self.hamiltonian_obj = MolecularHamiltonian(hamiltonian)
-        else:
+        if isinstance(hamiltonian, MolecularHamiltonian):
             self.hamiltonian_obj = hamiltonian
+        else:
+            self.hamiltonian_obj = MolecularHamiltonian(hamiltonian)
 
-        self.num_qubits = num_qubits or self.hamiltonian_obj.num_qubits
+        if num_qubits is not None and num_qubits != self.hamiltonian_obj.num_qubits:
+            raise QATNEError(
+                f"Specified num_qubits ({num_qubits}) does not match "
+                f"Hamiltonian num_qubits ({self.hamiltonian_obj.num_qubits})"
+            )
+
+        self.num_qubits = self.hamiltonian_obj.num_qubits
         self.max_bond_dim = max_bond_dim
         self.convergence_threshold = convergence_threshold
         self.shots = shots
@@ -47,7 +55,7 @@ class QATNESolver:
             num_sites=self.num_qubits, bond_dim=4, max_bond_dim=self.max_bond_dim
         )
         self.ansatz = AdaptiveAnsatz(num_qubits=self.num_qubits)
-        self.backend = AerSimulator()
+        self.estimator = EstimatorV2()
 
         self.energy_history: list[float] = []
         self.parameter_history: list[np.ndarray] = []
@@ -65,18 +73,10 @@ class QATNESolver:
 
     def _compute_energy(self, params: np.ndarray) -> float:
         circuit = self._build_adaptive_ansatz(params)
-        circuit.measure_all()
-
-        result = self.backend.run(circuit, shots=self.shots).result()
-        counts = result.get_counts()
-
-        energy = 0.0
-        for bitstring, count in counts.items():
-            prob = count / self.shots
-            state_vector = self._bitstring_to_state(bitstring)
-            energy += prob * self.hamiltonian_obj.compute_expectation(state_vector)
-
-        return float(energy)
+        pub = (circuit, self.hamiltonian_obj.op)
+        job = self.estimator.run([pub], precision=1.0 / np.sqrt(self.shots))
+        result = job.result()
+        return float(result[0].data.evs)
 
     def _compute_gradient(self, params: np.ndarray) -> np.ndarray:
         gradient = np.zeros_like(params)
@@ -106,12 +106,6 @@ class QATNESolver:
         for i in range(self.num_qubits - 1):
             if gradient_per_qubit[i] > threshold:
                 self.tensor_network.increase_bond_dim(i)
-
-    def _bitstring_to_state(self, bitstring: str) -> np.ndarray:
-        n = len(bitstring)
-        state = np.zeros(2**n, dtype=complex)
-        state[int(bitstring, 2)] = 1.0
-        return state
 
     def solve(
         self,
@@ -201,15 +195,16 @@ class QATNESolver:
             return np.concatenate(
                 [old_params, np.random.randn(new_size - len(old_params)) * 0.01]
             )
-        # If the parameter list is smaller, we keep the old ones (likely it never happens)
-        # but the test expects it to be at least as large.
         if new_size < len(old_params):
             return old_params[:new_size]
         return old_params
 
     def get_statevector(self, params: np.ndarray) -> np.ndarray:
         circuit = self._build_adaptive_ansatz(params)
-        result = StatevectorSimulator().run(circuit).result()
+        # Using AerSimulator for statevector consistency
+        sv_backend = AerSimulator(method="statevector")
+        circuit.save_statevector()
+        result = sv_backend.run(circuit).result()
         return np.array(result.get_statevector())
 
     def compute_fidelity(self, params: np.ndarray, target_state: np.ndarray) -> float:

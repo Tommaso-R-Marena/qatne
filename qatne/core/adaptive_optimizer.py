@@ -56,15 +56,15 @@ class AdamOptimizer(BaseOptimizer):
         self.epsilon = epsilon
         self.decay = decay
 
-        self.m = None
-        self.v = None
+        self.m: np.ndarray | None = None
+        self.v: np.ndarray | None = None
 
     def step(
         self, params: np.ndarray, gradient: np.ndarray, iteration: int
     ) -> np.ndarray:
         current_lr = self.learning_rate / (1.0 + self.decay * iteration)
 
-        if self.m is None:
+        if self.m is None or self.v is None:
             self.m = np.zeros_like(params)
             self.v = np.zeros_like(params)
 

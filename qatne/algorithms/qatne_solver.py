@@ -124,8 +124,14 @@ class QATNESolver:
         for i in range(n):
             ev_plus_data = results[2 * i].data.evs
             ev_minus_data = results[2 * i + 1].data.evs
-            ev_plus = float(ev_plus_data[0]) if ev_plus_data.ndim > 0 else float(ev_plus_data)
-            ev_minus = float(ev_minus_data[0]) if ev_minus_data.ndim > 0 else float(ev_minus_data)
+            ev_plus = (
+                float(ev_plus_data[0]) if ev_plus_data.ndim > 0 else float(ev_plus_data)
+            )
+            ev_minus = (
+                float(ev_minus_data[0])
+                if ev_minus_data.ndim > 0
+                else float(ev_minus_data)
+            )
             gradient[i] = (ev_plus - ev_minus) / 2.0
 
         return gradient
@@ -224,7 +230,9 @@ class QATNESolver:
         grad_norm = float(np.linalg.norm(gradient))
         return energy, gradient, grad_norm
 
-    def _record_history(self, energy: float, params: np.ndarray, grad_norm: float) -> None:
+    def _record_history(
+        self, energy: float, params: np.ndarray, grad_norm: float
+    ) -> None:
         self.energy_history.append(energy)
         self.parameter_history.append(params.copy())
         self.gradient_norms.append(grad_norm)
@@ -258,7 +266,10 @@ class QATNESolver:
         return iteration % 50 == 0 and iteration > 0
 
     def _handle_adaptation(
-        self, params: np.ndarray, gradient: np.ndarray, optimizer: AdamOptimizer | GradientDescentOptimizer
+        self,
+        params: np.ndarray,
+        gradient: np.ndarray,
+        optimizer: AdamOptimizer | GradientDescentOptimizer,
     ) -> np.ndarray:
         self._adapt_tensor_network(gradient)
         if len(params) != self._estimate_num_parameters():
@@ -292,9 +303,7 @@ class QATNESolver:
 
     def get_statevector(self, params: np.ndarray) -> np.ndarray:
         template_circuit, param_vector = self._get_parameterized_circuit()
-        circuit = template_circuit.assign_parameters(
-            {param_vector: params}
-        )
+        circuit = template_circuit.assign_parameters({param_vector: params})
         # Using AerSimulator for statevector consistency
         sv_backend = AerSimulator(method="statevector")
         circuit.save_statevector()

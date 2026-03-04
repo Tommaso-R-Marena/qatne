@@ -22,15 +22,17 @@ class BaseOptimizer(ABC):
 
 
 class GradientDescentOptimizer(BaseOptimizer):
-    """Standard gradient descent with decaying learning rate."""
+    """Standard gradient descent with optional learning rate decay."""
 
-    def __init__(self, learning_rate: float = 0.1):
+    def __init__(self, learning_rate: float = 0.1, decay: float = 0.0):
         self.learning_rate = learning_rate
+        self.decay = decay
 
     def step(
         self, params: np.ndarray, gradient: np.ndarray, iteration: int
     ) -> np.ndarray:
-        lr = self.learning_rate / np.sqrt(iteration + 1)
+        lr = self.learning_rate / (1.0 + self.decay * iteration)
+        lr = lr / np.sqrt(iteration + 1)  # Base sqrt decay
         return params - lr * gradient
 
     def reset(self) -> None:
@@ -38,7 +40,7 @@ class GradientDescentOptimizer(BaseOptimizer):
 
 
 class AdamOptimizer(BaseOptimizer):
-    """Adaptive Moment Estimation (Adam) optimizer."""
+    """Adaptive Moment Estimation (Adam) optimizer with optional decay."""
 
     def __init__(
         self,
@@ -46,11 +48,13 @@ class AdamOptimizer(BaseOptimizer):
         beta1: float = 0.9,
         beta2: float = 0.999,
         epsilon: float = 1e-8,
+        decay: float = 0.0,
     ):
         self.learning_rate = learning_rate
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
+        self.decay = decay
 
         self.m = None
         self.v = None
@@ -58,6 +62,8 @@ class AdamOptimizer(BaseOptimizer):
     def step(
         self, params: np.ndarray, gradient: np.ndarray, iteration: int
     ) -> np.ndarray:
+        current_lr = self.learning_rate / (1.0 + self.decay * iteration)
+
         if self.m is None:
             self.m = np.zeros_like(params)
             self.v = np.zeros_like(params)
@@ -69,7 +75,7 @@ class AdamOptimizer(BaseOptimizer):
         m_hat = self.m / (1 - self.beta1**t)
         v_hat = self.v / (1 - self.beta2**t)
 
-        return params - self.learning_rate * m_hat / (np.sqrt(v_hat) + self.epsilon)
+        return params - current_lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
     def reset(self) -> None:
         self.m = None

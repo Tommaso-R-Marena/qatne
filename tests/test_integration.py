@@ -162,9 +162,7 @@ class TestScaling:
             H = np.eye(2**n)
             solver = QATNESolver(hamiltonian=H, num_qubits=n)
 
-            num_params = solver._estimate_num_parameters()
-            params = np.zeros(num_params)
-            circuit = solver._build_adaptive_ansatz(params)
+            circuit, _ = solver._get_parameterized_circuit()
             depths.append(circuit.depth())
 
         # Depth should increase (or stay same) with size

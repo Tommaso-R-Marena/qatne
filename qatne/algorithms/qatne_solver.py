@@ -7,6 +7,7 @@ from typing import Literal
 
 import numpy as np
 from qiskit import QuantumCircuit
+from qiskit.circuit import ParameterVector
 from qiskit.quantum_info import SparsePauliOp
 from qiskit_aer import AerSimulator
 from qiskit_aer.primitives import EstimatorV2
@@ -57,43 +58,83 @@ class QATNESolver:
         self.ansatz = AdaptiveAnsatz(num_qubits=self.num_qubits)
         self.estimator = EstimatorV2()
 
+        self._cached_circuit: QuantumCircuit | None = None
+        self._parameter_vector: ParameterVector | None = None
+
         self.energy_history: list[float] = []
         self.parameter_history: list[np.ndarray] = []
         self.gradient_norms: list[float] = []
         self.bond_dim_history: list[dict[tuple[int, int], int]] = []
 
-    def _build_adaptive_ansatz(self, params: np.ndarray) -> QuantumCircuit:
-        entanglement_pairs_by_layer = [
-            self.tensor_network.get_entanglement_pairs(layer)
-            for layer in range(self.tensor_network.num_layers)
-        ]
-        return self.ansatz.build_circuit(
-            params, self.tensor_network.num_layers, entanglement_pairs_by_layer
-        )
+    def _get_parameterized_circuit(self) -> tuple[QuantumCircuit, ParameterVector]:
+        """Get or build the parameterized template circuit."""
+        num_params = self._estimate_num_parameters()
+        if (
+            self._cached_circuit is None
+            or self._parameter_vector is None
+            or len(self._parameter_vector) != num_params
+        ):
+            self._parameter_vector = ParameterVector("θ", num_params)
+            entanglement_pairs_by_layer = [
+                self.tensor_network.get_entanglement_pairs(layer)
+                for layer in range(self.tensor_network.num_layers)
+            ]
+            self._cached_circuit = self.ansatz.build_circuit(
+                self._parameter_vector,
+                self.tensor_network.num_layers,
+                entanglement_pairs_by_layer,
+            )
+        return self._cached_circuit, self._parameter_vector
 
     def _compute_energy(self, params: np.ndarray) -> float:
-        circuit = self._build_adaptive_ansatz(params)
-        pub = (circuit, self.hamiltonian_obj.op)
+        circuit, param_vector = self._get_parameterized_circuit()
+        pub = (circuit, self.hamiltonian_obj.op, params)
         job = self.estimator.run([pub], precision=1.0 / np.sqrt(self.shots))
         result = job.result()
-        return float(result[0].data.evs)
+        evs = result[0].data.evs
+        if evs.ndim > 0:
+            return float(evs[0])
+        return float(evs)
 
     def _compute_gradient(self, params: np.ndarray) -> np.ndarray:
-        gradient = np.zeros_like(params)
+        circuit, param_vector = self._get_parameterized_circuit()
         shift = np.pi / 2
+        num_params = len(params)
+        num_circuit_params = len(param_vector)
 
-        for i in range(len(params)):
-            params_plus = params.copy()
+        # Truncate params if it's longer than circuit params (should not happen in practice)
+        # or pad with zeros if shorter.
+        active_params = np.zeros(num_circuit_params)
+        n = min(num_params, num_circuit_params)
+        active_params[:n] = params[:n]
+
+        pubs = []
+        for i in range(n):
+            params_plus = active_params.copy()
             params_plus[i] += shift
-            params_minus = params.copy()
+            params_minus = active_params.copy()
             params_minus[i] -= shift
-            gradient[i] = (
-                self._compute_energy(params_plus) - self._compute_energy(params_minus)
-            ) / 2.0
+            pubs.append((circuit, self.hamiltonian_obj.op, params_plus))
+            pubs.append((circuit, self.hamiltonian_obj.op, params_minus))
+
+        job = self.estimator.run(pubs, precision=1.0 / np.sqrt(self.shots))
+        results = job.result()
+
+        gradient = np.zeros(num_params)
+        for i in range(n):
+            ev_plus_data = results[2 * i].data.evs
+            ev_minus_data = results[2 * i + 1].data.evs
+            ev_plus = float(ev_plus_data[0]) if ev_plus_data.ndim > 0 else float(ev_plus_data)
+            ev_minus = float(ev_minus_data[0]) if ev_minus_data.ndim > 0 else float(ev_minus_data)
+            gradient[i] = (ev_plus - ev_minus) / 2.0
 
         return gradient
 
     def _adapt_tensor_network(self, gradient: np.ndarray) -> None:
+        # Clear cache when structure changes
+        self._cached_circuit = None
+        self._parameter_vector = None
+
         gradient_per_qubit = np.zeros(self.num_qubits)
         params_per_qubit = max(1, len(gradient) // self.num_qubits)
 
@@ -112,15 +153,61 @@ class QATNESolver:
         initial_params: np.ndarray | None = None,
         max_iterations: int = 1000,
         optimizer_type: Literal["adam", "gradient_descent"] = "adam",
+        learning_rate: float | None = None,
     ) -> tuple[float, np.ndarray]:
+        """Solve for the ground state using adaptive optimization.
 
-        if optimizer_type == "adam":
-            optimizer = AdamOptimizer(learning_rate=0.05)
-        elif optimizer_type == "gradient_descent":
-            optimizer = GradientDescentOptimizer(learning_rate=0.1)
+        Parameters
+        ----------
+        initial_params : np.ndarray, optional
+            Initial parameter values.
+        max_iterations : int, default=1000
+            Maximum number of optimization iterations.
+        optimizer_type : str, default="adam"
+            Type of optimizer ('adam' or 'gradient_descent').
+        learning_rate : float, optional
+            Learning rate for the optimizer.
+
+        Returns
+        -------
+        tuple[float, np.ndarray]
+            Final energy and optimal parameters.
+        """
+        optimizer = self._setup_optimizer(optimizer_type, learning_rate)
+        params = self._initialize_params(initial_params)
+
+        iterator = trange(max_iterations, disable=not self.show_progress, desc="QATNE")
+        for iteration in iterator:
+            energy, gradient, grad_norm = self._optimization_step(params)
+            self._record_history(energy, params, grad_norm)
+            self._update_progress_bar(iterator, iteration, energy, grad_norm)
+
+            if self._check_convergence():
+                LOGGER.info("Converged after %d iterations", iteration)
+                break
+
+            if self._should_adapt(iteration):
+                params = self._handle_adaptation(params, gradient, optimizer)
+
+            params = optimizer.step(params, gradient, iteration)
         else:
-            raise QATNEError(f"Unsupported optimizer type: {optimizer_type}")
+            LOGGER.warning(
+                "QATNE did not meet convergence threshold in %d iterations",
+                max_iterations,
+            )
 
+        return self.energy_history[-1], self.parameter_history[-1]
+
+    def _setup_optimizer(
+        self, optimizer_type: str, learning_rate: float | None
+    ) -> AdamOptimizer | GradientDescentOptimizer:
+        if optimizer_type == "adam":
+            return AdamOptimizer(learning_rate=learning_rate or 0.05)
+        if optimizer_type == "gradient_descent":
+            return GradientDescentOptimizer(learning_rate=learning_rate or 0.1)
+        raise QATNEError(f"Unsupported optimizer type: {optimizer_type}")
+
+    def _initialize_params(self, initial_params: np.ndarray | None) -> np.ndarray:
         if initial_params is None:
             initial_params = np.random.randn(self._estimate_num_parameters()) * 0.1
 
@@ -129,51 +216,55 @@ class QATNESolver:
         LOGGER.info(
             "Initial tensor network bond dimension: %d", self.tensor_network.bond_dim
         )
+        return params
 
-        iterator = trange(max_iterations, disable=not self.show_progress, desc="QATNE")
-        for iteration in iterator:
-            energy = self._compute_energy(params)
-            gradient = self._compute_gradient(params)
-            grad_norm = float(np.linalg.norm(gradient))
+    def _optimization_step(self, params: np.ndarray) -> tuple[float, np.ndarray, float]:
+        energy = self._compute_energy(params)
+        gradient = self._compute_gradient(params)
+        grad_norm = float(np.linalg.norm(gradient))
+        return energy, gradient, grad_norm
 
-            self.energy_history.append(energy)
-            self.parameter_history.append(params.copy())
-            self.gradient_norms.append(grad_norm)
-            self.bond_dim_history.append(self.tensor_network.bond_dims.copy())
+    def _record_history(self, energy: float, params: np.ndarray, grad_norm: float) -> None:
+        self.energy_history.append(energy)
+        self.parameter_history.append(params.copy())
+        self.gradient_norms.append(grad_norm)
+        self.bond_dim_history.append(self.tensor_network.bond_dims.copy())
 
-            if self.show_progress:
-                iterator.set_postfix(
-                    energy=f"{energy:.6f}",
-                    grad=f"{grad_norm:.6f}",
-                    bond=self.tensor_network.bond_dim,
-                )
-            elif iteration % 10 == 0:
-                LOGGER.info(
-                    "Iter %d Energy %.8f Grad %.6f Bond %d",
-                    iteration,
-                    energy,
-                    grad_norm,
-                    self.tensor_network.bond_dim,
-                )
+    def _update_progress_bar(
+        self, iterator: trange, iteration: int, energy: float, grad_norm: float
+    ) -> None:
+        if self.show_progress:
+            iterator.set_postfix(
+                energy=f"{energy:.6f}",
+                grad=f"{grad_norm:.6f}",
+                bond=self.tensor_network.bond_dim,
+            )
+        elif iteration % 10 == 0:
+            LOGGER.info(
+                "Iter %d Energy %.8f Grad %.6f Bond %d",
+                iteration,
+                energy,
+                grad_norm,
+                self.tensor_network.bond_dim,
+            )
 
-            if len(self.energy_history) > 1:
-                energy_change = abs(self.energy_history[-1] - self.energy_history[-2])
-                if energy_change < self.convergence_threshold:
-                    LOGGER.info("Converged after %d iterations", iteration)
-                    return self.energy_history[-1], self.parameter_history[-1]
+    def _check_convergence(self) -> bool:
+        if len(self.energy_history) < 2:
+            return False
+        energy_change = abs(self.energy_history[-1] - self.energy_history[-2])
+        return energy_change < self.convergence_threshold
 
-            if iteration % 50 == 0 and iteration > 0:
-                self._adapt_tensor_network(gradient)
-                if len(params) != self._estimate_num_parameters():
-                    params = self._resize_parameters(params)
-                    optimizer.reset()
+    def _should_adapt(self, iteration: int) -> bool:
+        return iteration % 50 == 0 and iteration > 0
 
-            params = optimizer.step(params, gradient, iteration)
-
-        LOGGER.warning(
-            "QATNE did not meet convergence threshold in %d iterations", max_iterations
-        )
-        return self.energy_history[-1], self.parameter_history[-1]
+    def _handle_adaptation(
+        self, params: np.ndarray, gradient: np.ndarray, optimizer: AdamOptimizer | GradientDescentOptimizer
+    ) -> np.ndarray:
+        self._adapt_tensor_network(gradient)
+        if len(params) != self._estimate_num_parameters():
+            params = self._resize_parameters(params)
+            optimizer.reset()
+        return params
 
     def _estimate_num_parameters(self) -> int:
         # Initial RY and RZ on each qubit
@@ -200,7 +291,10 @@ class QATNESolver:
         return old_params
 
     def get_statevector(self, params: np.ndarray) -> np.ndarray:
-        circuit = self._build_adaptive_ansatz(params)
+        template_circuit, param_vector = self._get_parameterized_circuit()
+        circuit = template_circuit.assign_parameters(
+            {param_vector: params}
+        )
         # Using AerSimulator for statevector consistency
         sv_backend = AerSimulator(method="statevector")
         circuit.save_statevector()

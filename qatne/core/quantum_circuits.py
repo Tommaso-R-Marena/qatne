@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 from qiskit import QuantumCircuit, QuantumRegister
+from qiskit.circuit import ParameterVector
 
 from qatne.core.exceptions import QuantumCircuitError
 
@@ -16,7 +17,7 @@ class BaseAnsatz(ABC):
     @abstractmethod
     def build_circuit(
         self,
-        params: np.ndarray,
+        params: np.ndarray | ParameterVector,
         num_layers: int,
         entanglement_pairs_by_layer: list[list[tuple[int, int]]],
     ) -> QuantumCircuit:
@@ -41,7 +42,7 @@ class AdaptiveAnsatz(BaseAnsatz):
 
     def build_circuit(
         self,
-        params: np.ndarray,
+        params: np.ndarray | ParameterVector,
         num_layers: int,
         entanglement_pairs_by_layer: list[list[tuple[int, int]]],
     ) -> QuantumCircuit:
@@ -49,8 +50,8 @@ class AdaptiveAnsatz(BaseAnsatz):
 
         Parameters
         ----------
-        params : np.ndarray
-            Circuit parameters.
+        params : np.ndarray | ParameterVector
+            Circuit parameters (values or symbols).
         num_layers : int
             Number of entangling layers.
         entanglement_pairs_by_layer : list[list[tuple[int, int]]]
@@ -66,13 +67,18 @@ class AdaptiveAnsatz(BaseAnsatz):
 
         param_idx = 0
 
+        def _get_param(idx):
+            if isinstance(params, ParameterVector):
+                return params[idx]
+            return float(params[idx])
+
         # Initial RY and RZ gates on each qubit
         for i in range(self.num_qubits):
             if param_idx < len(params):
-                circuit.ry(float(params[param_idx]), qr[i])
+                circuit.ry(_get_param(param_idx), qr[i])
                 param_idx += 1
             if param_idx < len(params):
-                circuit.rz(float(params[param_idx]), qr[i])
+                circuit.rz(_get_param(param_idx), qr[i])
                 param_idx += 1
 
         for layer in range(num_layers):
@@ -87,17 +93,17 @@ class AdaptiveAnsatz(BaseAnsatz):
 
                 circuit.cx(qr[i], qr[j])
                 if param_idx < len(params):
-                    circuit.ry(float(params[param_idx]), qr[j])
+                    circuit.ry(_get_param(param_idx), qr[j])
                     param_idx += 1
                 circuit.cx(qr[i], qr[j])
 
             # Rotation layer
             for i in range(self.num_qubits):
                 if param_idx < len(params):
-                    circuit.ry(float(params[param_idx]), qr[i])
+                    circuit.ry(_get_param(param_idx), qr[i])
                     param_idx += 1
                 if param_idx < len(params):
-                    circuit.rz(float(params[param_idx]), qr[i])
+                    circuit.rz(_get_param(param_idx), qr[i])
                     param_idx += 1
 
         return circuit

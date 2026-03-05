@@ -18,24 +18,24 @@ class MolecularHamiltonian:
         self,
         data: np.ndarray | SparsePauliOp | str | list[tuple[str, complex]],
     ):
+        self._matrix: np.ndarray | None = None
+
         if isinstance(data, np.ndarray):
             if data.ndim != 2 or data.shape[0] != data.shape[1]:
                 raise QATNEError("Hamiltonian matrix must be square")
             dim = data.shape[0]
             if dim & (dim - 1) != 0:
                 raise QATNEError("Hamiltonian dimension must be a power of 2")
-            self.matrix = data
+            self._matrix = data
             self.op = SparsePauliOp.from_operator(data)
             self.num_qubits = int(np.log2(dim))
         elif isinstance(data, SparsePauliOp):
             self.op = data
             self.num_qubits = data.num_qubits
-            self.matrix = data.to_matrix()
         elif isinstance(data, (str, list)):
             try:
                 self.op = SparsePauliOp(data)
                 self.num_qubits = self.op.num_qubits
-                self.matrix = self.op.to_matrix()
             except Exception as e:
                 raise QATNEError(f"Failed to initialize SparsePauliOp from data: {e}")
         else:
@@ -49,10 +49,17 @@ class MolecularHamiltonian:
             # Using a term with a coefficient that is large enough to not be simplified,
             # but small enough to not affect typical chemical accuracy (1e-3 Ha).
             self.op = SparsePauliOp("I" * self.num_qubits, coeffs=[1e-6])
-            # Update matrix to match the dummy operator
-            self.matrix = self.op.to_matrix()
+            # Clear matrix if it was set
+            self._matrix = None
         else:
             self.op = simplified_op
+
+    @property
+    def matrix(self) -> np.ndarray:
+        """Qubit operator as a dense matrix (lazily evaluated)."""
+        if self._matrix is None:
+            self._matrix = self.op.to_matrix()
+        return self._matrix
 
     def get_ground_energy(self) -> float:
         """Compute exact ground-state energy via diagonalization."""

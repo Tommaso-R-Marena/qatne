@@ -56,13 +56,12 @@ class TestQATNESolver:
         H, num_qubits, _ = simple_hamiltonian
 
         solver = QATNESolver(hamiltonian=H, num_qubits=num_qubits)
-        num_params = solver._estimate_num_parameters()
-        params = np.random.randn(num_params) * 0.1
 
-        circuit = solver._build_adaptive_ansatz(params)
+        circuit, param_vector = solver._get_parameterized_circuit()
 
         assert circuit.num_qubits == num_qubits
         assert circuit.depth() > 0
+        assert len(param_vector) == solver._estimate_num_parameters()
 
     def test_energy_evaluation(self, simple_hamiltonian):
         """Test energy evaluation."""
